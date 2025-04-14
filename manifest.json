@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Moon Tab",
+  "version": "1.0.2",
+  "description": "一个简洁的新标签页",
+  "chrome_url_overrides": {
+    "newtab": "index.html"
+  },
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "storage",
+    "unlimitedStorage",
+    "http://*/*",
+    "https://*/*"
+  ],
+  "icons": {
+    "16": "icon/icon.png",
+    "48": "icon/icon.png",
+    "128": "icon/icon.png"
+  },
+  "host_permissions": [
+    "*://*/*"
+  ]
+}
