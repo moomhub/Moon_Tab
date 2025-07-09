@@ -5,6 +5,7 @@ import { DEFAULT_BOOKMARK_ICON_DATA, ICON_LOCAL_DATA } from '@/constants/icon';
 import { IconData, IconStoreType } from '@/types/icon';
 import { S3Backup } from './backup';
 import { buildBlobImagePath } from './icon';
+import { S3ConnectionConfig } from '@/types/store';
 
 /**
  * Description 生成UUID,用于书签ID
@@ -84,4 +85,14 @@ export const getSystemIconData = async () => {
     });
   });
   return iconData;
+};
+
+export const getS3CopyData = (data: S3ConnectionConfig) => {
+  const base64 = btoa(JSON.stringify(data));
+  return base64.split('').reverse().join('');
+};
+
+export const getS3PasteData = (data: string): S3ConnectionConfig => {
+  const reversed = data.split('').reverse().join('');
+  return JSON.parse(atob(reversed));
 };

@@ -80,10 +80,10 @@ pnpm build:zip
 - 所有数据存储在本地IndexedDB
 ### EN 
 1. Basic functions
--New tab replacement: Replace the default new tab in the browser
--Card management: supports adding/editing/deleting bookmark cards
--Personalized settings: adjustable background wallpaper and layout
+- New tab replacement: Replace the default new tab in the browser
+- Card management: supports adding/editing/deleting bookmark cards
+- Personalized settings: adjustable background wallpaper and layout
 
 2. Test account
--No need to log in to the account
--All data is stored locally in IndexedDB
+- No need to log in to the account
+- All data is stored locally in IndexedDB

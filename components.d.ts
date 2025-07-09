@@ -55,6 +55,7 @@ declare module 'vue' {
     TSpace: typeof import('tdesign-vue-next')['Space']
     TStickyItem: typeof import('tdesign-vue-next')['StickyItem']
     TStickyTool: typeof import('tdesign-vue-next')['StickyTool']
+    TTooltip: typeof import('tdesign-vue-next')['Tooltip']
     TUpload: typeof import('tdesign-vue-next')['Upload']
     WeatherCard: typeof import('./src/components/card/WeatherCard.vue')['default']
     WeatherForm: typeof import('./src/components/form/WeatherForm.vue')['default']

@@ -11,6 +11,8 @@
     "tabs",
     "storage",
     "unlimitedStorage",
+    "clipboardRead",
+    "clipboardWrite",
     "http://*/*",
     "https://*/*"
   ],

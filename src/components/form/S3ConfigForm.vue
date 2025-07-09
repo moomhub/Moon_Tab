@@ -7,6 +7,16 @@
     :rules="rules"
     :data="formData"
   >
+    <div class="flex">
+      <t-space class="copy">
+        <t-tooltip content="粘贴">
+          <PasteIcon @click="s3ConfigPaste" />
+        </t-tooltip>
+        <t-tooltip content="复制">
+          <CopyIcon @click="s3ConfigCopy"/>
+        </t-tooltip>
+      </t-space>
+    </div>
     <t-form-item label="Endpoint" name="endpoint">
       <t-input v-model="formData.endpoint" placeholder="请输入S3服务地址" />
     </t-form-item>
@@ -50,19 +60,21 @@ import {
   FormRule,
   MessagePlugin,
 } from 'tdesign-vue-next';
+import { PasteIcon, CopyIcon } from 'tdesign-icons-vue-next';
 import { useSystemStore } from '@/store';
 import { S3ConnectionConfig } from '@/types/store';
-
-// pinia store 实例化
-const systemStore = useSystemStore();
-// hooks 实例化
 import { useLoading } from '@/hooks';
 import S3Service from '@/utils/s3';
-
+import { getS3CopyData, getS3PasteData } from '@/utils/system';
+// pinia
+const systemStore = useSystemStore();
+// hook
 const { loading, setLoading } = useLoading();
-
+// vue ref
 const formRef = ref<FormInstanceFunctions>(); // 引用表单实例
 
+
+// 表格数据
 const formData = reactive<S3ConnectionConfig>({
   ...systemStore.backupSetting.s3Config, // 初始值,
 }); // 表单数据
@@ -144,6 +156,35 @@ onBeforeMount(() => {
     Object.assign(formData, systemStore.backupSetting.s3Config);
   }
 });
+// 在script setup部分添加以下方法
+const s3ConfigCopy = async () => {
+  try {
+    const data = getS3CopyData(formData);
+    await navigator.clipboard.writeText(data);
+    MessagePlugin.success('S3配置已复制到剪贴板');
+  } catch (error) {
+    MessagePlugin.error('复制失败');
+  }
+};
+
+const s3ConfigPaste = async () => {
+  try {
+    const text = await navigator.clipboard.readText();
+    const config = getS3PasteData(text);
+    Object.assign(formData, config);
+    MessagePlugin.success('配置已粘贴');
+  } catch (error) {
+    MessagePlugin.error('粘贴失败，请检查剪贴板内容');
+  }
+};
 </script>
 
-<style scoped></style>
+<style lang="less" scoped>
+.copy {
+  margin-left: auto;
+  .t-icon {
+    font-size: 25px;
+    cursor: pointer;
+  }
+}
+</style>
