@@ -11,27 +11,26 @@
         </t-space>
       </div>
     </div>
-    <t-loading size="small" :loading="loading" show-overlay>
-      <div class="grid-stack" ref="gridstackRef">
+
+    <div class="grid-stack" ref="gridstackRef">
+      <div
+        v-for="page in currentPages"
+        class="grid-stack-item"
+        :gs-id="page.id"
+        :id="page.id"
+        :key="page.id"
+      >
         <div
-          v-for="page in currentPages"
-          class="grid-stack-item"
-          :gs-id="page.id"
-          :id="page.id"
-          :key="page.id"
+          class="thumbnail"
+          :style="{ backgroundImage: `url(${currentWallpaper})` }"
         >
-          <div
-            class="thumbnail"
-            :style="{ backgroundImage: `url(${currentWallpaper})` }"
-          >
-            <img :src="page.thumbnail" />
-          </div>
-          <div class="delete" @click="deletePage(page.id)">
-            <CloseIcon />
-          </div>
+          <img :src="page.thumbnail" />
+        </div>
+        <div class="delete" @click="deletePage(page.id)">
+          <CloseIcon />
         </div>
       </div>
-    </t-loading>
+    </div>
   </div>
 </template>
 
@@ -40,29 +39,18 @@ import html2canvas from 'html2canvas';
 import { CloseIcon, EllipsisIcon } from 'tdesign-icons-vue-next';
 import { MessagePlugin } from 'tdesign-vue-next';
 import { useSwiperStore, useWallpaperStore } from '@/store';
-import { getSwiperPageHtml } from '@/utils/eventBus';
+import { getSwipweThumbnailPages } from '@/utils/eventBus';
 import { GridStack, GridStackNode } from 'gridstack';
 import { generateID } from '@/utils/system';
-import { SwiperData } from '@/types';
-import { useLoading } from '@/hooks';
-
-// 滑动页面略缩信息
-interface ThumbnailPage {
-  id: string; // 滑动页面ID
-  thumbnail: string; // 略缩图
-}
+import { SwiperData, ThumbnailPage } from '@/types';
 
 // Pinia Store
 const swiperStore = useSwiperStore();
 const wallpaperStore = useWallpaperStore();
-// hooks
-const { loading, setLoading } = useLoading(true);
 // gridstack Ref
 const grid = ref<GridStack | null>(null);
 // Gridstack HTMLElement Ref
 const gridstackRef = ref<HTMLElement | null>(null);
-// 原始页面数组 （用于重置编辑页面）
-const originalPages = ref<Array<ThumbnailPage>>([]);
 // 当前用于操作的页面
 const currentPages = ref<Array<ThumbnailPage>>([]);
 // 当前壁纸
@@ -71,7 +59,7 @@ const currentWallpaper = ref<string>('');
 // 重置当前页面为默认的原始页面
 function resetPage() {
   // 重置数据
-  currentPages.value = [...originalPages.value];
+  currentPages.value = [...getSwipweThumbnailPages()];
   // 完全销毁并重新初始化GridStack
   if (grid.value) {
     grid.value.destroy(false);
@@ -125,7 +113,7 @@ function savePage() {
   // 更新store
   swiperStore.swiperData = reorderedSwiperData as SwiperData[];
   // 同步更新originalPages
-  originalPages.value = [...currentPages.value];
+  // originalPages.value = [...currentPages.value];
   // 显示保存成功提示
   MessagePlugin.success('书签页面已保存');
 }
@@ -253,77 +241,22 @@ const initGrid = () => {
       .filter((page): page is ThumbnailPage => page !== undefined);
     currentPages.value = newThumbnailPages;
   });
+  grid.value.load(currentPages.value);
 };
 
 // 重新加载GridStack
 const loadGridStack = () => {
-  grid.value!.load(currentPages.value, true);
+  grid.value!.load(currentPages.value);
 };
 
-// 构建滑动页面的略缩图
-async function buildSwiperThumbnailPage() {
-  // 清空现有数据，避免重复积累
-  originalPages.value = [];
-  const swiperPageHtmls = getSwiperPageHtml();
-  // 跟踪缺失的DOM元素
-  const missingDomPages: string[] = [];
-  try {
-    // 按照swiperStore.swiperData的顺序生成缩略图
-    for (const page of swiperStore.swiperData) {
-      const dom = swiperPageHtmls[page.id];
-      if (!dom) {
-        missingDomPages.push(page.id);
-        continue;
-      }
-      try {
-        const rect = dom.getBoundingClientRect();
-        const canvas = await html2canvas(dom, {
-          width: rect.width,
-          height: rect.height,
-          scale: 2, // 清晰度
-          backgroundColor: null, // 设置一个背景色
-          useCORS: true,
-          allowTaint: true,
-          logging: false,
-        });
-        // 使用Map确保ID唯一性（防止重复添加）
-        const pageExists = originalPages.value.some((p) => p.id === page.id);
-        if (!pageExists) {
-          originalPages.value.push({
-            id: page.id,
-            thumbnail: canvas.toDataURL('image/png'),
-          });
-        }
-      } catch (error) {
-        console.error(
-          `Failed to generate thumbnail for page ${page.id}:`,
-          error
-        );
-      }
-    }
-    // 报告缺失的DOM元素
-    if (missingDomPages.length > 0) {
-      console.warn(
-        `Missing DOM elements for pages: ${missingDomPages.join(', ')}`
-      );
-    }
-    console.log('originalPages.value', originalPages.value);
-
-    // 确保originalPages和currentPages同步
-    currentPages.value = [...originalPages.value];
-
-    console.log('Thumbnail generation completed successfully');
-  } catch (error) {
-    console.error('Error generating thumbnails:', error);
-  }
-}
-
 onMounted(async () => {
+  // await buildSwiperThumbnailPage();
+  currentPages.value = [...getSwipweThumbnailPages()];
   currentWallpaper.value = await wallpaperStore.getCurrentWallpaperImage();
-  await buildSwiperThumbnailPage();
-  initGrid();
-  // 关闭加载状态
-  setLoading(false);
+  nextTick(() => {
+    initGrid();
+    loadGridStack();
+  });
 });
 </script>
 

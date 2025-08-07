@@ -33,6 +33,7 @@
 </template>
 
 <script setup lang="ts" name="SystemSettings">
+import { buildSwipweThumbnailPages } from '@/utils/eventBus';
 import { MenuValue } from 'tdesign-vue-next';
 
 // 通用配置设置
@@ -118,6 +119,9 @@ function openSystemSetting() {
   visible.value = true;
 }
 
+onMounted(async () => {
+  await buildSwipweThumbnailPages();
+});
 // 暴露方法给父组件调用
 defineExpose({ openSystemSetting });
 </script>

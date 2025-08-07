@@ -63,7 +63,7 @@ import { useSwiperStore, useWallpaperStore } from '@/store';
 import {
   currentSwiperIndex,
   setCurrentSwiperId,
-  setSwiperPageHtml,
+  setSwiperPageDoms,
 } from '@/utils/eventBus';
 import { AllCardData, ContextMenuData, SwiperData } from '@/types';
 
@@ -141,10 +141,7 @@ function handleCardEdit(data: AllCardData) {
 }
 
 onMounted(() => {
-  nextTick(() => {
-    setSwiperPageHtml(swiperPageRefs.value);
-    console.log('swiperPageRefs', swiperPageRefs);
-  });
+  setSwiperPageDoms(swiperPageRefs.value);
 });
 
 // 暴露方法给父组件调用
