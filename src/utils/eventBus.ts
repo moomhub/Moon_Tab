@@ -1,5 +1,6 @@
 import { ref } from 'vue';
 import { useSwiperStore } from '@/store';
+import Swiper from 'swiper';
 
 // 右键菜单数据
 interface MenuData {
@@ -17,7 +18,18 @@ const defaultMenuData: MenuData = {
   cardId: '',
 };
 
+// 当前滑动页面ID
 const currentSwiperId = ref('');
+
+// 略缩图滑动器
+const swiperPagesHtml = ref<Record<string, any> | null>(null);
+
+export function setSwiperPageHtml(pageHtml: Record<string, any>) {
+  swiperPagesHtml.value = pageHtml;
+}
+export function getSwiperPageHtml() {
+ return swiperPagesHtml.value as Record<string, any>;
+}
 
 // 设置当前swiper的id
 export function setCurrentSwiperId(id: string) {
