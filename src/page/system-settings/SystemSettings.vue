@@ -81,12 +81,12 @@ const SystemMenu = [
     value: 'LocalIconSetting',
   },
   {
-    label: '重置配置',
-    value: 'ResetSetting',
-  },
-  {
     label: '页面配置',
     value: 'PageSetting',
+  },
+  {
+    label: '重置配置',
+    value: 'ResetSetting',
   },
 ];
 // 默认页面为账户信息页面

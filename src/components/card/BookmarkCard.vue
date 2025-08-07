@@ -8,7 +8,7 @@
     }"
   >
     <img
-      class="bookmark-icon"
+      :class="iconClasses"
       v-if="bookmarkIcon?.image"
       :src="bookmarkIcon?.value"
     />
@@ -85,6 +85,13 @@ onBeforeMount(async () => {
   await handleBookmarkIcon();
 });
 
+const iconClasses = computed(() => {
+  return {
+    'bookmark-icon-one': props.data.position.w === 1,
+    'bookmark-icon-two': props.data.position.w !== 1
+  };
+});
+
 // // 图片大小
 // const innerStyles = computed(() => {
 //   const styles: Partial<CSSStyleDeclaration> = {};
@@ -134,14 +141,24 @@ const handleBookmarkClick = () => {
   justify-content: center;
   border-radius: 10px;
 
-  .bookmark-icon {
-    // object-fit: cover; // 确保图片填充整个容器
-    width: 70%;
+  .bookmark-icon-one {
+    object-fit: cover; // 确保图片填充整个容器
+    width: 50%;
     display: block;
-    height: 100%;
     background-repeat: no-repeat;
     background-size: cover;
     margin: auto;
+    object-fit: contain;
+  }
+
+  .bookmark-icon-two {
+    // object-fit: cover; // 确保图片填充整个容器
+    width: 40%;
+    display: block;
+
+    // background-repeat: no-repeat;
+    // background-size: cover;
+    // margin: auto;
     object-fit: contain;
   }
 

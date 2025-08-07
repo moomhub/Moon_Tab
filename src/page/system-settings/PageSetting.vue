@@ -20,7 +20,10 @@
           :id="page.id"
           :key="page.id"
         >
-          <div class="thumbnail">
+          <div
+            class="thumbnail"
+            :style="{ backgroundImage: `url(${currentWallpaper})` }"
+          >
             <img :src="page.thumbnail" />
           </div>
           <div class="delete" @click="deletePage(page.id)">
@@ -35,6 +38,7 @@
 <script setup lang="ts" name="PageSetting">
 import html2canvas from 'html2canvas';
 import { CloseIcon, EllipsisIcon } from 'tdesign-icons-vue-next';
+import { MessagePlugin } from 'tdesign-vue-next';
 import { useSwiperStore, useWallpaperStore } from '@/store';
 import { getSwiperPageHtml } from '@/utils/eventBus';
 import { GridStack, GridStackNode } from 'gridstack';
@@ -61,19 +65,17 @@ const gridstackRef = ref<HTMLElement | null>(null);
 const originalPages = ref<Array<ThumbnailPage>>([]);
 // 当前用于操作的页面
 const currentPages = ref<Array<ThumbnailPage>>([]);
+// 当前壁纸
+const currentWallpaper = ref<string>('');
 
 // 重置当前页面为默认的原始页面
 function resetPage() {
   // 重置数据
   currentPages.value = [...originalPages.value];
-
   // 完全销毁并重新初始化GridStack
   if (grid.value) {
-    // 1. 销毁现有GridStack实例
     grid.value.destroy(false);
     grid.value = null;
-
-    // 2. 确保DOM更新完成后再重新初始化
     nextTick(() => {
       initGrid();
       loadGridStack();
@@ -90,7 +92,6 @@ function savePage() {
   // 获取当前页面ID和store中的页面ID
   const currentIds = currentPages.value.map((page) => page.id);
   const storeIds = swiperStore.swiperData.map((page) => page.id);
-
   // 找出新增的页面(在currentPages中但不在store中)
   const newPages = currentPages.value.filter(
     (page) => !storeIds.includes(page.id)
@@ -131,33 +132,67 @@ function savePage() {
 
 // 新增滑动页面
 async function addPage() {
-  const newId = generateID();
-  // Create a blank thumbnail for the new page
-  const canvas = document.createElement('canvas');
-  canvas.width = 240;
-  canvas.height = 135;
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    ctx.fillStyle = '#f1f3f5'; // A default background color
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (currentPages.value.length >= 8) {
+    MessagePlugin.warning('滑动的页面太多啦!');
+    return;
   }
-  const newPageThumbnail = {
-    id: newId,
-    thumbnail: canvas.toDataURL('image/png'),
-  };
-  // Add to local thumbnail list
-  currentPages.value.push(newPageThumbnail);
-  // Add the new widget to the gridstack instance
-  await nextTick();
-  if (grid.value) {
-    const el = document.getElementById(newId);
-    if (el) {
-      grid.value.makeWidget(el);
+  const newId = generateID();
+  // 创建一个临时的div元素来显示当前壁纸
+  const tempDiv = document.createElement('div');
+  tempDiv.style.width = '240px';
+  tempDiv.style.height = '135px';
+  tempDiv.style.backgroundImage = `url(${currentWallpaper.value})`;
+  tempDiv.style.backgroundSize = 'cover';
+  tempDiv.style.backgroundPosition = 'center';
+  tempDiv.style.backgroundRepeat = 'no-repeat';
+  tempDiv.style.position = 'absolute';
+  tempDiv.style.top = '-9999px'; // 移出视口
+  tempDiv.style.left = '-9999px';
+  // 添加到文档中以确保正确渲染
+  document.body.appendChild(tempDiv);
+  try {
+    // 使用html2canvas捕获临时div的内容
+    const canvas = await html2canvas(tempDiv, {
+      width: 240,
+      height: 135,
+      scale: 1,
+      backgroundColor: null,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+    });
+
+    const newPageThumbnail = {
+      id: newId,
+      thumbnail: canvas.toDataURL('image/png'),
+    };
+
+    // 从文档中移除临时div
+    document.body.removeChild(tempDiv);
+
+    // Add to local thumbnail list
+    currentPages.value.push(newPageThumbnail);
+    // Add the new widget to the gridstack instance
+    await nextTick();
+    if (grid.value) {
+      const el = document.getElementById(newId);
+      if (el) {
+        grid.value.makeWidget(el);
+      }
     }
+  } catch (error) {
+    // 如果捕获失败，回退到纯色背景
+    console.error('Failed to capture wallpaper for new page:', error);
   }
 }
 // 删除滑动页面
 function deletePage(pageId: string) {
+  // 检查页面数量，确保最少保留两个页面
+  if (currentPages.value.length <= 2) {
+    MessagePlugin.warning('至少需要保留两个页面');
+    return;
+  }
+
   const index = currentPages.value.findIndex((page) => page.id === pageId);
   if (index !== -1) {
     currentPages.value.splice(index, 1);
@@ -178,7 +213,7 @@ const initGrid = () => {
   }
   grid.value = GridStack.init(
     {
-      row: 5,
+      row: 4,
       column: 2,
       minRow: 1,
       cellHeight: '140px',
@@ -235,21 +270,18 @@ async function buildSwiperThumbnailPage() {
   try {
     // 按照swiperStore.swiperData的顺序生成缩略图
     for (const page of swiperStore.swiperData) {
-      console.log('Generating thumbnail for page:', page.id);
       const dom = swiperPageHtmls[page.id];
       if (!dom) {
         missingDomPages.push(page.id);
         continue;
       }
-      const el = await addBackgroundToElement(dom);
-
       try {
-        const rect = el.getBoundingClientRect();
-        const canvas = await html2canvas(el, {
+        const rect = dom.getBoundingClientRect();
+        const canvas = await html2canvas(dom, {
           width: rect.width,
           height: rect.height,
           scale: 2, // 清晰度
-          backgroundColor: '#f1f3f5', // 设置一个背景色
+          backgroundColor: null, // 设置一个背景色
           useCORS: true,
           allowTaint: true,
           logging: false,
@@ -285,21 +317,9 @@ async function buildSwiperThumbnailPage() {
     console.error('Error generating thumbnails:', error);
   }
 }
-// 为DOM元素添加背景图片
-const addBackgroundToElement = async (el: HTMLElement) => {
-  // 设置默认背景图片路径
-  const backgroundImg = await wallpaperStore.getCurrentWallpaperImage();
-  console.log('backgroundImg', backgroundImg);
-  // 为元素添加背景样式
-  el.style.backgroundImage = `url(${backgroundImg})`;
-  el.style.backgroundSize = 'cover';
-  el.style.backgroundPosition = 'center';
-  el.style.backgroundRepeat = 'no-repeat';
-  return el;
-};
-
 
 onMounted(async () => {
+  currentWallpaper.value = await wallpaperStore.getCurrentWallpaperImage();
   await buildSwiperThumbnailPage();
   initGrid();
   // 关闭加载状态
@@ -308,87 +328,82 @@ onMounted(async () => {
 </script>
 
 <style lang="less" scoped>
-.grid-stack {
-  width: 100%;
-  min-height: 200px;
-  background: var(--td-bg-color-page);
-}
-
-.grid-stack-item {
-  width: 240px;
-  height: 135px;
-
-  .delete {
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    cursor: pointer;
-    background-color: var(--td-error-color);
-    border-radius: 50%;
-    padding: 2px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    z-index: 10;
-  }
-}
-
-.add-page-block {
-  .add-page-content {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    background-color: var(--td-bg-color-page);
-    border: 2px dashed #ced4da;
-    cursor: pointer;
-    transition: background-color 0.2s;
-
-    &:hover {
-      background-color: #dee2e6;
-    }
-  }
-}
-
-.thumbnail {
-  width: 100%;
-  height: 100%;
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-}
-
-.sidebar > .grid-stack-item,
-.grid-stack-item-content {
-  text-align: center;
-  background-color: #18bc9c;
-}
-</style>
-
-<style scoped lang="less">
 .operate {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 16px;
   margin-bottom: 20px;
-  background-color: #f5f7fa;
+  background-color: var(--td-bg-color-secondarycontainer);
   border-radius: 8px;
-}
+  .left {
+    display: flex;
+    align-items: center;
+  }
 
-.left {
-  display: flex;
-  align-items: center;
+  .right {
+    display: flex;
+    align-items: center;
+  }
 }
+.grid-stack {
+  width: 100%;
+  min-height: 200px;
 
-.right {
-  display: flex;
-  align-items: center;
+  .grid-stack-item {
+    width: 240px;
+    height: 135px;
+    overflow: hidden;
+    border-radius: var(--td-radius-medium);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    &:hover {
+      .delete {
+        display: flex;
+      }
+    }
+
+    .thumbnail {
+      width: 100%;
+      height: 100%;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      transition: all 0.3s ease;
+      cursor: move;
+
+      &:hover {
+        transform: scale(1.1);
+        img {
+          transform: scale(1.1);
+        }
+      }
+
+      img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: all 0.3s ease;
+        overflow: hidden;
+      }
+    }
+    .delete {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      cursor: pointer;
+      background-color: var(--td-error-color);
+      border-radius: 50%;
+      padding: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      display: none;
+      z-index: 10;
+    }
+  }
 }
-
-// 可以根据需要添加更多样式
 </style>
