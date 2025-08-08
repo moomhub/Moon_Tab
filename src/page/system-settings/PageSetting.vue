@@ -36,7 +36,7 @@
 
 <script setup lang="ts" name="PageSetting">
 import html2canvas from 'html2canvas';
-import { CloseIcon, EllipsisIcon } from 'tdesign-icons-vue-next';
+import { CloseIcon } from 'tdesign-icons-vue-next';
 import { MessagePlugin } from 'tdesign-vue-next';
 import { useSwiperStore, useWallpaperStore } from '@/store';
 import { getSwipweThumbnailPages } from '@/utils/eventBus';
