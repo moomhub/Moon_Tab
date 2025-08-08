@@ -1,5 +1,8 @@
 import { ref } from 'vue';
 import { useSwiperStore } from '@/store';
+import Swiper from 'swiper';
+import { ThumbnailPage } from '@/types';
+import html2canvas from 'html2canvas';
 
 // 右键菜单数据
 interface MenuData {
@@ -17,7 +20,79 @@ const defaultMenuData: MenuData = {
   cardId: '',
 };
 
+// 当前滑动页面ID
 const currentSwiperId = ref('');
+
+
+// 略缩图滑动器
+const swiperPageDoms = ref<Record<string, any>>({});
+
+export function setSwiperPageDoms(pageHtml: Record<string, any>) {
+  swiperPageDoms.value = pageHtml;
+}
+export function getSwiperPageDoms() {
+ return swiperPageDoms.value;
+}
+// 略缩图滑动器
+const swipweThumbnailPages = ref<Array<ThumbnailPage>>([]);
+
+export async function buildSwipweThumbnailPages() {
+  const swiperStore = useSwiperStore();
+  // 清空现有数据，避免重复积累
+  swipweThumbnailPages.value = [];
+  // 跟踪缺失的DOM元素
+  const missingDomPages: string[] = [];
+  try {
+    // 按照swiperStore.swiperData的顺序生成缩略图
+    for (const page of swiperStore.swiperData) {
+      const dom = swiperPageDoms.value[page.id];
+      if (!dom) {
+        missingDomPages.push(page.id);
+        continue;
+      }
+      try {
+        const rect = dom.getBoundingClientRect();
+        const canvas = await html2canvas(dom, {
+          width: rect.width,
+          height: rect.height,
+          scale: 2, // 清晰度
+          backgroundColor: null, // 设置一个背景色
+          useCORS: true,
+          allowTaint: true,
+          logging: false,
+        });
+        // 使用Map确保ID唯一性（防止重复添加）
+        const pageExists = swipweThumbnailPages.value.some(
+          (p) => p.id === page.id
+        );
+        if (!pageExists) {
+          swipweThumbnailPages.value.push({
+            id: page.id,
+            thumbnail: canvas.toDataURL('image/png'),
+          });
+        }
+      } catch (error) {
+        console.error(
+          `Failed to generate thumbnail for page ${page.id}:`,
+          error
+        );
+      }
+    }
+    // 报告缺失的DOM元素
+    if (missingDomPages.length > 0) {
+      console.warn(
+        `Missing DOM elements for pages: ${missingDomPages.join(', ')}`
+      );
+    }
+    console.log('Thumbnail generation completed successfully');
+  } catch (error) {
+    console.error('Error generating thumbnails:', error);
+  }
+}
+
+export function getSwipweThumbnailPages() {
+  return swipweThumbnailPages.value;
+}
 
 // 设置当前swiper的id
 export function setCurrentSwiperId(id: string) {

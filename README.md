@@ -78,6 +78,9 @@ pnpm build:zip
 2. 测试账户
 - 无需登录账户
 - 所有数据存储在本地IndexedDB
+
+
+
 ### EN 
 1. Basic functions
 - New tab replacement: Replace the default new tab in the browser
@@ -87,3 +90,4 @@ pnpm build:zip
 2. Test account
 - No need to log in to the account
 - All data is stored locally in IndexedDB
+

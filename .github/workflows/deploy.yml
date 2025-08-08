@@ -1,0 +1,85 @@
+name: Deploy to Microsoft Partner Center
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  MPC_CLIENT_ID: "${{ secrets.MPC_CLIENT_ID }}"
+  MPC_API_KEY: "${{ secrets.MPC_API_KEY }}"
+  MPC_PRODUCT_ID: "${{ secrets.MPC_PRODUCT_ID }}"
+
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions: 
+      contents: write
+    steps:
+      # 1. 拉取代码
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. 安装 Node
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      # 3. 安装 pnpm（由 pnpm 官方 action 管理缓存）
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      # 4. 安装依赖（使用 pnpm 本地缓存，速度快）
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      # 5. 构建
+      - name: Build project
+        run: pnpm run build:linux
+
+      # 6. 校验打包结果
+      - name: Validate build output
+        run: |
+          if [ ! -f "dist.zip" ]; then
+            echo "❌ dist.zip not found!"
+            exit 1
+          fi
+          size=$(stat -c%s dist.zip)
+          if [ "$size" -eq 0 ]; then
+            echo "❌ dist.zip is empty!"
+            exit 1
+          fi
+          echo "✅ dist.zip size: $size bytes"
+
+      # 7. 部署到Microsoft Partner Center
+      - name: Deploy to MPC
+        run: |
+          chmod +x .github/scripts/deploy-to-mpc.sh
+          .github/scripts/deploy-to-mpc.sh
+
+      - name: Get version from package.json
+        id: get_version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "VERSION=$version" >> $GITHUB_ENV
+          echo "Version: $version"
+
+      # 8. 发布到GitHub Releases
+      - name: Release to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: Release v${{ env.VERSION }}
+          draft: false
+          prerelease: false
+          files: |
+            ./dist.zip
+
