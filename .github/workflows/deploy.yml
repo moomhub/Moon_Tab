@@ -3,7 +3,6 @@ name: Deploy to Microsoft Partner Center
 on:
   push:
     branches: [ main ]
-  # 手动触发工作流
   workflow_dispatch:
 
 env:
@@ -14,13 +13,14 @@ env:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       
     - name: Setup Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: '18'
         cache: 'pnpm'
@@ -29,114 +29,198 @@ jobs:
       run: npm install -g pnpm
       
     - name: Install dependencies
-      run: pnpm install
+      run: pnpm install --frozen-lockfile
       
     - name: Build project
       run: pnpm run build:zip
       
-    - name: Upload to Microsoft Partner Center
+    - name: Validate build output
       run: |
-        # 上传文件
+        if [ ! -f "dist.zip" ]; then
+          echo "Error: dist.zip not found after build"
+          exit 1
+        fi
+        
+        file_size=$(stat -c%s "dist.zip")
+        echo "Package size: ${file_size} bytes"
+        
+        if [ $file_size -eq 0 ]; then
+          echo "Error: dist.zip is empty"
+          exit 1
+        fi
+      
+    - name: Validate environment variables
+      run: |
+        missing_vars=()
+        [ -z "$MPC_CLIENT_ID" ] && missing_vars+=("MPC_CLIENT_ID")
+        [ -z "$MPC_API_KEY" ] && missing_vars+=("MPC_API_KEY")
+        [ -z "$MPC_PRODUCT_ID" ] && missing_vars+=("MPC_PRODUCT_ID")
+        
+        if [ ${#missing_vars[@]} -ne 0 ]; then
+          echo "Error: Missing required environment variables: ${missing_vars[*]}"
+          exit 1
+        fi
+      
+    - name: Upload and publish to Microsoft Partner Center
+      run: |
+        set -e
+        
+        # 重试函数
+        retry_request() {
+          local max_attempts=3
+          local delay=5
+          local attempt=1
+          
+          while [ $attempt -le $max_attempts ]; do
+            echo "Attempt $attempt of $max_attempts..."
+            if eval "$1"; then
+              return 0
+            fi
+            
+            if [ $attempt -lt $max_attempts ]; then
+              echo "Request failed, retrying in ${delay}s..."
+              sleep $delay
+              delay=$((delay * 2))
+            fi
+            attempt=$((attempt + 1))
+          done
+          
+          echo "All attempts failed"
+          return 1
+        }
+        
+        # 状态检查函数
+        check_operation_status() {
+          local operation_id=$1
+          local endpoint=$2
+          local max_wait=600
+          local elapsed=0
+          
+          while [ $elapsed -lt $max_wait ]; do
+            response=$(curl -s -X GET \
+              -H "Authorization: ApiKey $MPC_API_KEY" \
+              -H "X-ClientID: $MPC_CLIENT_ID" \
+              "$endpoint/$operation_id")
+            
+            if [ $? -ne 0 ]; then
+              echo "Failed to check status, retrying..."
+              sleep 10
+              elapsed=$((elapsed + 10))
+              continue
+            fi
+            
+            status=$(echo "$response" | jq -r '.status // "Unknown"')
+            echo "Status: $status (${elapsed}s elapsed)"
+            
+            case "$status" in
+              "Succeeded")
+                return 0
+                ;;
+              "Failed"|"Cancelled")
+                echo "Operation failed: $response"
+                return 1
+                ;;
+              "InProgress")
+                sleep 10
+                elapsed=$((elapsed + 10))
+                ;;
+              *)
+                echo "Unknown status: $status"
+                return 1
+                ;;
+            esac
+          done
+          
+          echo "Operation timed out"
+          return 1
+        }
+        
+        # 1. 上传包
         echo "Uploading package..."
-        UPLOAD_RESPONSE=$(curl -s -w "%{http_code}" -o upload_response.txt -X POST \
+        upload_cmd='curl -s -w "%{http_code}" -o upload_response.txt -X POST \
           -H "Authorization: ApiKey $MPC_API_KEY" \
           -H "X-ClientID: $MPC_CLIENT_ID" \
           -H "Content-Type: application/zip" \
           --data-binary "@dist.zip" \
-          "https://api.addons.microsoftedge.microsoft.com/v1/products/$MPC_PRODUCT_ID/submissions/draft/package")
+          "https://api.addons.microsoftedge.microsoft.com/v1/products/$MPC_PRODUCT_ID/submissions/draft/package"'
         
-        HTTP_CODE=${UPLOAD_RESPONSE: -3}
+        if ! retry_request "$upload_cmd"; then
+          echo "Failed to upload package after retries"
+          exit 1
+        fi
+        
+        HTTP_CODE=$(tail -c 3 upload_response.txt)
         if [ "$HTTP_CODE" != "202" ]; then
-          echo "Failed to upload package. HTTP code: $HTTP_CODE"
+          echo "Upload failed with HTTP code: $HTTP_CODE"
           cat upload_response.txt
           exit 1
         fi
         
-        LOCATION=$(grep -i location upload_response.txt | awk -F: '{print $2}' | tr -d ' \r\n')
-        echo "Package uploaded successfully. Location: $LOCATION"
+        # 提取 operation ID
+        LOCATION=$(grep -i "^location:" upload_response.txt | cut -d' ' -f2 | tr -d '\r\n')
+        OPERATION_ID=$(basename "$LOCATION")
+        echo "Upload operation ID: $OPERATION_ID"
         
-        # 从响应头中提取 operation ID
-        OPERATION_ID=$(echo "$LOCATION" | awk -F/ '{print $NF}')
-        echo "Operation ID: $OPERATION_ID"
-        
-        # 检查上传状态
+        # 2. 检查上传状态
         echo "Checking upload status..."
-        STATUS="InProgress"
-        while [ "$STATUS" = "InProgress" ]; do
-          sleep 5
-          STATUS_RESPONSE=$(curl -s -w "%{http_code}" -o status_response.txt -X GET \
-            -H "Authorization: ApiKey $MPC_API_KEY" \
-            -H "X-ClientID: $MPC_CLIENT_ID" \
-            "https://api.addons.microsoftedge.microsoft.com/v1/products/$MPC_PRODUCT_ID/submissions/draft/package/operations/$OPERATION_ID")
-          
-          STATUS_HTTP_CODE=${STATUS_RESPONSE: -3}
-          if [ "$STATUS_HTTP_CODE" != "200" ]; then
-            echo "Failed to check upload status. HTTP code: $STATUS_HTTP_CODE"
-            cat status_response.txt
-            exit 1
-          fi
-          
-          STATUS=$(jq -r '.status' status_response.txt)
-          echo "Upload status: $STATUS"
-        done
-        
-        if [ "$STATUS" != "Succeeded" ]; then
-          echo "Upload failed with status: $STATUS"
+        if ! check_operation_status "$OPERATION_ID" \
+          "https://api.addons.microsoftedge.microsoft.com/v1/products/$MPC_PRODUCT_ID/submissions/draft/package/operations"; then
+          echo "Upload verification failed"
           exit 1
         fi
         
-        echo "Upload completed successfully."
+        echo "Package uploaded successfully"
         
-        # 发布提交
+        # 3. 发布提交
         echo "Publishing submission..."
-        PUBLISH_RESPONSE=$(curl -s -w "%{http_code}" -o publish_response.txt -X POST \
+        publish_cmd='curl -s -w "%{http_code}" -o publish_response.txt -X POST \
           -H "Authorization: ApiKey $MPC_API_KEY" \
           -H "X-ClientID: $MPC_CLIENT_ID" \
           -H "Content-Type: application/json" \
-          -d '{"notes": "Automated release via GitHub Actions"}' \
-          "https://api.addons.microsoftedge.microsoft.com/v1/products/$MPC_PRODUCT_ID/submissions")
+          -d "{\"notes\": \"Automated release via GitHub Actions - $(date)\"}" \
+          "https://api.addons.microsoftedge.microsoft.com/v1/products/$MPC_PRODUCT_ID/submissions"'
         
-        PUBLISH_HTTP_CODE=${PUBLISH_RESPONSE: -3}
+        if ! retry_request "$publish_cmd"; then
+          echo "Failed to publish submission after retries"
+          exit 1
+        fi
+        
+        PUBLISH_HTTP_CODE=$(tail -c 3 publish_response.txt)
         if [ "$PUBLISH_HTTP_CODE" != "202" ]; then
-          echo "Failed to publish submission. HTTP code: $PUBLISH_HTTP_CODE"
+          echo "Publish failed with HTTP code: $PUBLISH_HTTP_CODE"
           cat publish_response.txt
           exit 1
         fi
         
-        PUBLISH_LOCATION=$(grep -i location publish_response.txt | awk -F: '{print $2}' | tr -d ' \r\n')
-        echo "Submission published successfully. Location: $PUBLISH_LOCATION"
+        # 提取发布 operation ID
+        PUBLISH_LOCATION=$(grep -i "^location:" publish_response.txt | cut -d' ' -f2 | tr -d '\r\n')
+        PUBLISH_OPERATION_ID=$(basename "$PUBLISH_LOCATION")
+        echo "Publish operation ID: $PUBLISH_OPERATION_ID"
         
-        # 检查发布状态
+        # 4. 检查发布状态
         echo "Checking publishing status..."
-        PUBLISH_OPERATION_ID=$(echo "$PUBLISH_LOCATION" | awk -F/ '{print $NF}')
-        PUBLISH_STATUS="InProgress"
-        while [ "$PUBLISH_STATUS" = "InProgress" ]; do
-          sleep 5
-          PUBLISH_STATUS_RESPONSE=$(curl -s -w "%{http_code}" -o publish_status_response.txt -X GET \
-            -H "Authorization: ApiKey $MPC_API_KEY" \
-            -H "X-ClientID: $MPC_CLIENT_ID" \
-            "https://api.addons.microsoftedge.microsoft.com/v1/products/$MPC_PRODUCT_ID/submissions/operations/$PUBLISH_OPERATION_ID")
-          
-          PUBLISH_STATUS_HTTP_CODE=${PUBLISH_STATUS_RESPONSE: -3}
-          if [ "$PUBLISH_STATUS_HTTP_CODE" != "200" ]; then
-            echo "Failed to check publishing status. HTTP code: $PUBLISH_STATUS_HTTP_CODE"
-            cat publish_status_response.txt
-            exit 1
-          fi
-          
-          PUBLISH_STATUS=$(jq -r '.status' publish_status_response.txt)
-          echo "Publishing status: $PUBLISH_STATUS"
-        done
-        
-        if [ "$PUBLISH_STATUS" != "Succeeded" ]; then
-          echo "Publishing failed with status: $PUBLISH_STATUS"
+        if ! check_operation_status "$PUBLISH_OPERATION_ID" \
+          "https://api.addons.microsoftedge.microsoft.com/v1/products/$MPC_PRODUCT_ID/submissions/operations"; then
+          echo "Publishing verification failed"
           exit 1
         fi
         
-        echo "Submission published successfully."
+        echo "Extension published successfully!"
         
     - name: Archive production artifacts
       uses: actions/upload-artifact@v4
+      if: always()
       with:
-        name: moon-tab-extension
-        path: dist.zip
+        name: moon-tab-extension-${{ github.sha }}
+        path: |
+          dist.zip
+          upload_response.txt
+          publish_response.txt
+        retention-days: 30
+
+    - name: Notify on failure
+      if: failure()
+      run: |
+        echo "Deployment failed. Check the logs and artifacts for details."
+        echo "Commit: ${{ github.sha }}"
+        echo "Branch: ${{ github.ref_name }}"
