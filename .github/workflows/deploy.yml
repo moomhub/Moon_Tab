@@ -9,14 +9,13 @@ env:
   MPC_CLIENT_ID: "${{ secrets.MPC_CLIENT_ID }}"
   MPC_API_KEY: "${{ secrets.MPC_API_KEY }}"
   MPC_PRODUCT_ID: "${{ secrets.MPC_PRODUCT_ID }}"
-  MPC_API_BASE: "https://api.addons.microsoftedge.microsoft.com/v1"
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions: 
+    permissions:
       contents: write
+    timeout-minutes: 5
     steps:
       # 1. 拉取代码
       - name: Checkout code
