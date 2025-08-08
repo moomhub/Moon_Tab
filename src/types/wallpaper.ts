@@ -53,6 +53,7 @@ export interface WallpaperImage {
   createdAt?: Date; // 创建时间
 }
 
+// 当前壁纸结果
 export interface CurrentWallpaperResult {
   imageData?: Blob | string; // 图片数据
   videoData?: Blob | string; // 视频数据

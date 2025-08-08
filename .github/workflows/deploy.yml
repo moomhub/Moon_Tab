@@ -1,0 +1,144 @@
+name: Deploy to Microsoft Partner Center
+
+on:
+  push:
+    branches: [ main ]
+  # 手动触发工作流
+  workflow_dispatch:
+
+env:
+  MPC_CLIENT_ID: "${{ secrets.MPC_CLIENT_ID }}"
+  MPC_API_KEY: "${{ secrets.MPC_API_KEY }}"
+  MPC_PRODUCT_ID: "${{ secrets.MPC_PRODUCT_ID }}"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm install -g pnpm && pnpm install
+      
+    - name: Build project
+      run: pnpm run build:zip
+      
+    - name: Upload to Microsoft Partner Center
+      # 使用Microsoft Edge Add-ons v1.1 API
+      # 需要在GitHub Secrets中设置以下变量：
+      # MPC_CLIENT_ID - Client ID
+      # MPC_API_KEY - API Key
+      # MPC_PRODUCT_ID - 产品ID
+      run: |
+          # 上传文件
+          echo "Uploading package..."
+          UPLOAD_RESPONSE=$(curl -s -w "%{http_code}" -o upload_response.txt -X POST \
+            -H "Authorization: ApiKey $MPC_API_KEY" \
+            -H "X-ClientID: $MPC_CLIENT_ID" \
+            -H "Content-Type: application/zip" \
+            --data-binary "@dist.zip" \
+            "https://api.addons.microsoftedge.microsoft.com/v1/products/$MPC_PRODUCT_ID/submissions/draft/package")
+          
+          HTTP_CODE=${UPLOAD_RESPONSE: -3}
+          if [ "$HTTP_CODE" != "202" ]; then
+            echo "Failed to upload package. HTTP code: $HTTP_CODE"
+            cat upload_response.txt
+            exit 1
+          fi
+          
+          LOCATION=$(grep -i location upload_response.txt | awk -F: '{print $2}' | tr -d ' \r\n')
+          echo "Package uploaded successfully. Location: $LOCATION"
+          
+          # 从响应头中提取 operation ID
+          OPERATION_ID=$(echo "$LOCATION" | awk -F/ '{print $NF}')
+          echo "Operation ID: $OPERATION_ID"
+          
+          # 检查上传状态
+          echo "Checking upload status..."
+          STATUS="InProgress"
+          while [ "$STATUS" = "InProgress" ]; do
+            sleep 5
+            STATUS_RESPONSE=$(curl -s -w "%{http_code}" -o status_response.txt -X GET \
+              -H "Authorization: ApiKey $MPC_API_KEY" \
+              -H "X-ClientID: $MPC_CLIENT_ID" \
+              "https://api.addons.microsoftedge.microsoft.com/v1/products/$MPC_PRODUCT_ID/submissions/draft/package/operations/$OPERATION_ID")
+            
+            STATUS_HTTP_CODE=${STATUS_RESPONSE: -3}
+            if [ "$STATUS_HTTP_CODE" != "200" ]; then
+              echo "Failed to check upload status. HTTP code: $STATUS_HTTP_CODE"
+              cat status_response.txt
+              exit 1
+            fi
+            
+            STATUS=$(jq -r '.status' status_response.txt)
+            echo "Upload status: $STATUS"
+          done
+          
+          if [ "$STATUS" != "Succeeded" ]; then
+            echo "Upload failed with status: $STATUS"
+            exit 1
+          fi
+          
+          echo "Upload completed successfully."
+          
+          # 发布提交
+          echo "Publishing submission..."
+          PUBLISH_RESPONSE=$(curl -s -w "%{http_code}" -o publish_response.txt -X POST \
+            -H "Authorization: ApiKey $MPC_API_KEY" \
+            -H "X-ClientID: $MPC_CLIENT_ID" \
+            -H "Content-Type: application/json" \
+            -d '{"notes": "Automated release via GitHub Actions"}' \
+            "https://api.addons.microsoftedge.microsoft.com/v1/products/$MPC_PRODUCT_ID/submissions")
+          
+          PUBLISH_HTTP_CODE=${PUBLISH_RESPONSE: -3}
+          if [ "$PUBLISH_HTTP_CODE" != "202" ]; then
+            echo "Failed to publish submission. HTTP code: $PUBLISH_HTTP_CODE"
+            cat publish_response.txt
+            exit 1
+          fi
+          
+          PUBLISH_LOCATION=$(grep -i location publish_response.txt | awk -F: '{print $2}' | tr -d ' \r\n')
+          echo "Submission published successfully. Location: $PUBLISH_LOCATION"
+          
+          # 检查发布状态
+          echo "Checking publishing status..."
+          PUBLISH_OPERATION_ID=$(echo "$PUBLISH_LOCATION" | awk -F/ '{print $NF}')
+          PUBLISH_STATUS="InProgress"
+          while [ "$PUBLISH_STATUS" = "InProgress" ]; do
+            sleep 5
+            PUBLISH_STATUS_RESPONSE=$(curl -s -w "%{http_code}" -o publish_status_response.txt -X GET \
+              -H "Authorization: ApiKey $MPC_API_KEY" \
+              -H "X-ClientID: $MPC_CLIENT_ID" \
+              "https://api.addons.microsoftedge.microsoft.com/v1/products/$MPC_PRODUCT_ID/submissions/operations/$PUBLISH_OPERATION_ID")
+            
+            PUBLISH_STATUS_HTTP_CODE=${PUBLISH_STATUS_RESPONSE: -3}
+            if [ "$PUBLISH_STATUS_HTTP_CODE" != "200" ]; then
+              echo "Failed to check publishing status. HTTP code: $PUBLISH_STATUS_HTTP_CODE"
+              cat publish_status_response.txt
+              exit 1
+            fi
+            
+            PUBLISH_STATUS=$(jq -r '.status' publish_status_response.txt)
+            echo "Publishing status: $PUBLISH_STATUS"
+          done
+          
+          if [ "$PUBLISH_STATUS" != "Succeeded" ]; then
+            echo "Publishing failed with status: $PUBLISH_STATUS"
+            exit 1
+          fi
+          
+          echo "Submission published successfully."
+          
+      - name: Archive production artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: moon-tab-extension
+          path: dist.zip

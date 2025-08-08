@@ -1,4 +1,4 @@
-import { IconData } from "./icon";
+import { IconData } from './icon';
 
 // 卡片类型
 export enum CardType {
@@ -114,4 +114,10 @@ export interface ContextMenuData {
 export interface BookmarkIcon {
   image: boolean; // 图片
   value: string; // 图片链接或者文字
+}
+
+// Swiper 滑动页面略缩信息
+export interface ThumbnailPage {
+  id: string; // 滑动页面ID
+  thumbnail: string; // 略缩图
 }
