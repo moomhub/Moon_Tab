@@ -17,24 +17,32 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      # 1. 拉取代码
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup pnpm and Node.js
+      # 2. 安装 Node
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      # 3. 安装 pnpm（由 pnpm 官方 action 管理缓存）
+      - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 9
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 18
-          cache: pnpm
+          run_install: false
 
+      # 4. 安装依赖（使用 pnpm 本地缓存，速度快）
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
 
+      # 5. 构建
       - name: Build project
         run: pnpm run build:zip
 
+      # 6. 校验打包结果
       - name: Validate build output
         run: |
           if [ ! -f "dist.zip" ]; then
@@ -48,6 +56,7 @@ jobs:
           fi
           echo "✅ dist.zip size: $size bytes"
 
+      # 7. 校验环境变量
       - name: Validate environment variables
         run: |
           missing=()
@@ -60,6 +69,7 @@ jobs:
           fi
           echo "✅ All required env vars are set"
 
+      # 8. 上传扩展包
       - name: Upload package to MPC
         run: |
           chmod +x .github/scripts/retry_request.sh .github/scripts/check_status.sh
@@ -81,6 +91,7 @@ jobs:
             "$MPC_API_BASE/products/$MPC_PRODUCT_ID/submissions/draft/package/operations" \
             "$MPC_API_KEY" "$MPC_CLIENT_ID"
 
+      # 9. 发布扩展
       - name: Publish submission
         run: |
           echo "🚀 Publishing submission..."
@@ -103,6 +114,7 @@ jobs:
 
           echo "✅ Extension published successfully!"
 
+      # 10. 上传日志和产物
       - name: Archive artifacts
         uses: actions/upload-artifact@v4
         with:
