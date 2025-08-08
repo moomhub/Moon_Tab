@@ -79,21 +79,7 @@ pnpm build:zip
 - 无需登录账户
 - 所有数据存储在本地IndexedDB
 
-## 自动化部署
 
-本项目包含一个GitHub Action工作流，用于自动构建和打包扩展，并提供上传到Microsoft Partner Center的框架。
-
-### 配置说明
-
-1. 在GitHub仓库的Settings > Secrets and variables > Actions中添加以下secrets：
-   - `MPC_TENANT_ID` - Microsoft Partner Center租户ID
-   - `MPC_CLIENT_ID` - Azure AD应用客户端ID
-   - `MPC_CLIENT_SECRET` - Azure AD应用客户端密钥
-   - `MPC_PRODUCT_ID` - 产品ID
-
-2. 工作流会在每次推送到main分支时自动触发，也可以通过GitHub Actions界面手动触发。
-
-3. 上传到Microsoft Partner Center的部分需要根据Microsoft官方API文档进行实现，当前工作流中提供了PowerShell脚本的框架代码。
 
 ### EN 
 1. Basic functions
@@ -105,18 +91,3 @@ pnpm build:zip
 - No need to log in to the account
 - All data is stored locally in IndexedDB
 
-## Automated Deployment
-
-This project includes a GitHub Action workflow for automatically building and packaging the extension, with a framework for uploading to the Microsoft Partner Center.
-
-### Configuration Instructions
-
-1. Add the following secrets in your GitHub repository under Settings > Secrets and variables > Actions:
-   - `MPC_TENANT_ID` - Microsoft Partner Center tenant ID
-   - `MPC_CLIENT_ID` - Azure AD application client ID
-   - `MPC_CLIENT_SECRET` - Azure AD application client secret
-   - `MPC_PRODUCT_ID` - Product ID
-
-2. The workflow is automatically triggered on every push to the main branch, and can also be manually triggered through the GitHub Actions interface.
-
-3. The upload to Microsoft Partner Center section needs to be implemented according to the official Microsoft API documentation. The current workflow provides a framework code for a PowerShell script.
