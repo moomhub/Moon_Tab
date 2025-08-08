@@ -33,6 +33,7 @@
 </template>
 
 <script setup lang="ts" name="SystemSettings">
+import { buildSwipweThumbnailPages } from '@/utils/eventBus';
 import { MenuValue } from 'tdesign-vue-next';
 
 // 通用配置设置
@@ -49,6 +50,8 @@ const LocalIconSetting = defineAsyncComponent(
 );
 // 重置设置
 const ResetSetting = defineAsyncComponent(() => import('./ResetSetting.vue'));
+// 页面设置
+const PageSetting = defineAsyncComponent(() => import('./PageSetting.vue'));
 
 // 页面组件映射
 const pageLookup: any = {
@@ -57,6 +60,7 @@ const pageLookup: any = {
   BackupSetting,
   LocalIconSetting,
   ResetSetting,
+  PageSetting,
 };
 
 // 系统菜单
@@ -76,6 +80,10 @@ const SystemMenu = [
   {
     label: '本地图标管理',
     value: 'LocalIconSetting',
+  },
+  {
+    label: '页面配置',
+    value: 'PageSetting',
   },
   {
     label: '重置配置',
@@ -111,6 +119,9 @@ function openSystemSetting() {
   visible.value = true;
 }
 
+onMounted(async () => {
+  await buildSwipweThumbnailPages();
+});
 // 暴露方法给父组件调用
 defineExpose({ openSystemSetting });
 </script>

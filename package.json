@@ -1,12 +1,13 @@
 {
   "name": "moon-tab",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build && copy manifest.json dist\\",
-    "build:zip": "vue-tsc --noEmit && vite build && copy manifest.json dist\\ && powershell Compress-Archive -Path dist -DestinationPath dist.zip -Force",
+    "build:windows": "vue-tsc --noEmit && vite build && copy manifest.json dist\\ && powershell Compress-Archive -Path dist -DestinationPath dist.zip -Force",
+    "build:linux": "vue-tsc --noEmit && vite build && cp manifest.json dist/ && zip -r dist.zip dist",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -17,6 +18,7 @@
     "dayjs": "^1.11.13",
     "file-saver": "^2.0.5",
     "gridstack": "^12.1.2",
+    "html2canvas": "^1.4.1",
     "jszip": "^3.10.1",
     "localforage": "^1.10.0",
     "murmurhash": "^2.0.1",

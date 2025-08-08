@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia';
 import persist from './plugin';
-import { WallpaperType } from '@/types/wallpaper';
-import { BING_DAILY_WALLPAPER_DB_KEY } from '@/constants';
+import { WallpaperImage, WallpaperType } from '@/types/wallpaper';
+import { BING_DAILY_WALLPAPER_DB_KEY, LOCAL_WALLPAPER } from '@/constants';
+import useIndexedDB from './indexedDB';
 
 // 系统设置数据
 const useWallpaperStore = defineStore(
@@ -24,11 +25,37 @@ const useWallpaperStore = defineStore(
       return BING_DAILY_WALLPAPER_DB_KEY;
     });
 
+    async function getCurrentWallpaperImage(): Promise<string> {
+      const indexedDB = useIndexedDB();
+
+      try {
+        let wallpaperData: WallpaperImage | null ;
+        if(currentWallpaperId.value === 'local'){
+          wallpaperData = LOCAL_WALLPAPER;
+        }else{
+          wallpaperData =  await indexedDB.wallpaperDB.getItem(currentWallpaperId.value);
+        }
+        if (wallpaperData && wallpaperData.imageData) {
+          // 如果是Blob对象，转换为URL
+          if (wallpaperData.imageData instanceof Blob) {
+            return URL.createObjectURL(wallpaperData.imageData);
+          }
+          // 如果已经是URL字符串，直接返回
+          return wallpaperData.imageData as string;
+        }
+      } catch (error) {
+        console.error('获取壁纸图片失败:', error);
+      }
+      // 返回默认背景色
+      return '#f1f3f5';
+    }
+
     return {
       type,
       bingDailyDate,
       localWallpapreId,
       currentWallpaperId,
+      getCurrentWallpaperImage,
     };
   },
   {

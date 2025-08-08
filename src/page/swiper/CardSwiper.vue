@@ -24,8 +24,16 @@
         v-for="(swiperData, indexs) in swiperDatas"
         :key="swiperData.id"
       >
-        <div class="grid-container">
-          <CardGrid :bookmark="swiperData" @-context-menu="handelContextMunu" />
+        <div
+          class="max flex-center"
+          :ref="(el) => setSwiperPageRef(el, swiperData.id)"
+        >
+          <div class="grid-container">
+            <CardGrid
+              :bookmark="swiperData"
+              @-context-menu="handelContextMunu"
+            />
+          </div>
         </div>
       </swiper-slide>
     </swiper>
@@ -51,17 +59,31 @@ import 'swiper/css/scrollbar';
 import ContextMenu from '@/components/ContextMenu.vue';
 import EditCardDataDialog from '@/components/dialog/EditCardDataDialog.vue';
 import CardGrid from './CardGrid.vue';
-import { useSwiperStore } from '@/store';
-import { currentSwiperIndex, setCurrentSwiperId } from '@/utils/eventBus';
-import { AllCardData, ContextMenuData } from '@/types';
+import { useSwiperStore, useWallpaperStore } from '@/store';
+import {
+  currentSwiperIndex,
+  setCurrentSwiperId,
+  setSwiperPageDoms,
+} from '@/utils/eventBus';
+import { AllCardData, ContextMenuData, SwiperData } from '@/types';
 
 // Pinia store
 const swiperStore = useSwiperStore();
-
+const wallpaperStore = useWallpaperStore();
 // 滑动实例Ref
 const swiperElement = ref<SwiperClass | null>(null);
 // 滑动数据
 const swiperDatas = computed(() => swiperStore.swiperData);
+
+// 滑动页面dom Ref
+const swiperPageRefs = ref<Record<string, any>>({});
+
+// 获取页面 DOM 引用
+const setSwiperPageRef = async (el: any, id: string) => {
+  if (el) {
+    swiperPageRefs.value[id] = el;
+  }
+};
 
 // 滑动组件Ref
 const swiperRef = ref<InstanceType<typeof Swiper>>();
@@ -117,6 +139,10 @@ function handleCardEdit(data: AllCardData) {
   console.log('selected card edit value', selectedCard.value);
   editCardDataDialogRef.value?.openEditCardDialog(data);
 }
+
+onMounted(() => {
+  setSwiperPageDoms(swiperPageRefs.value);
+});
 
 // 暴露方法给父组件调用
 defineExpose({
