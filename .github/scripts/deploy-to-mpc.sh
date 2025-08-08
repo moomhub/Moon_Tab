@@ -1,233 +1,118 @@
 #!/bin/bash
+set -e
 
-# 部署到Microsoft Partner Center的脚本
-# 包含上传、状态检查、发布和发布状态检查的完整流程
-
-set -e  # 遇到错误时终止脚本
-
-# 颜色定义
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+# ====== 配置区域 ======
+API_ENDPOINT="https://api.addons.microsoftedge.microsoft.com"
+CLIENT_ID=$MPC_CLIENT_ID
+API_KEY=$MPC_API_KEY
+PRODUCT_ID=$MPC_PRODUCT_ID
+FILE_PATH="dist.zip"
+PUBLISH_NOTES="自动化发布测试"
+RETRY_LIMIT=10
+RETRY_INTERVAL=5   # 秒
+# =====================
 
 # 日志函数
-echo_info() {
-  echo -e "${GREEN}[INFO]${NC} $1"
+log_info() { echo -e "\033[1;32m[INFO] $(date '+%Y-%m-%d %H:%M:%S')\033[0m $1"; }
+log_error() { echo -e "\033[1;31m[ERROR] $(date '+%Y-%m-%d %H:%M:%S')\033[0m $1"; }
+
+# 从响应头提取 Location (operationID)
+extract_operation_id() {
+    grep -i "location:" | awk '{print $2}' | tr -d '\r\n '
 }
 
-echo_warn() {
-  echo -e "${YELLOW}[WARN]${NC} $1"
-}
-
-echo_error() {
-  echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# 检查必需的环境变量
-check_env_vars() {
-  echo_info "校验环境变量..."
-  local missing=()
-  for var in MPC_CLIENT_ID MPC_API_KEY MPC_PRODUCT_ID MPC_API_BASE; do
-    if [ -z "${!var}" ]; then 
-      missing+=($var)
+# 检查 curl 命令是否成功执行
+curl_check() {
+    if [ $? -ne 0 ]; then
+        log_error "curl 命令执行失败"
+        exit 1
     fi
-  done
-  
-  if [ ${#missing[@]} -gt 0 ]; then
-    echo_error "缺少环境变量: ${missing[*]}"
+}
+
+# 检查状态，返回 status 值（不混日志）
+check_status() {
+    local url="$1"
+    local status=""
+    local count=0
+    while [[ $count -lt $RETRY_LIMIT ]]; do
+        local resp=$(curl -s \
+            -H "Authorization: ApiKey $API_KEY" \
+            -H "X-ClientID: $CLIENT_ID" \
+            "$url")
+        curl_check
+        status=$(echo "$resp" | jq -r '.status')
+        # 把日志输出到 stderr，这样不会进入变量
+        log_info "当前状态: $status" >&2
+        if [[ "$status" != "InProgress" ]]; then
+            if [[ "$status" == "Failed" ]]; then
+                local msg=$(echo "$resp" | jq -r '.message')
+                local errs=$(echo "$resp" | jq -r '.errors | join("; ")')
+                log_error "失败原因: $msg" >&2
+                [[ "$errs" != "null" && -n "$errs" ]] && log_error "错误详情: $errs" >&2
+                log_error "完整响应: $resp" >&2
+            fi
+            break
+        fi
+        ((count++))
+        log_info "等待 $RETRY_INTERVAL 秒后重试..." >&2
+        sleep $RETRY_INTERVAL
+    done
+    printf "%s" "$status"
+}
+
+
+# 1. 上传扩展包
+log_info "开始上传扩展包..."
+UPLOAD_RESPONSE=$(curl -s -D - \
+  -H "Authorization: ApiKey $API_KEY" \
+  -H "X-ClientID: $CLIENT_ID" \
+  -H "Content-Type: application/zip" \
+  -X POST \
+  --data-binary @"$FILE_PATH" \
+  "$API_ENDPOINT/v1/products/$PRODUCT_ID/submissions/draft/package")
+curl_check
+
+UPLOAD_LOCATION=$(echo "$UPLOAD_RESPONSE" | extract_operation_id)
+if [[ -z "$UPLOAD_LOCATION" ]]; then
+    log_error "上传失败，未获取到 operationID"
+    log_error "响应内容: $UPLOAD_RESPONSE"
     exit 1
-  fi
-  
-  echo_info "所有必需的环境变量均已设置"
-}
+fi
+UPLOAD_OP_ID=$(basename "$UPLOAD_LOCATION")
+log_info "上传已提交，operationID: $UPLOAD_OP_ID"
 
-# 上传包到MPC
-upload_package() {
-  echo_info "开始上传包到Microsoft Partner Center..."
-  
-  if [ ! -f "dist.zip" ]; then
-    echo_error "找不到 dist.zip 文件!"
+# 2. 检查上传状态
+UPLOAD_STATUS=$(check_status "$API_ENDPOINT/v1/products/$PRODUCT_ID/submissions/draft/package/operations/$UPLOAD_OP_ID")
+if [[ "$UPLOAD_STATUS" != "Succeeded" ]]; then
+    log_error "上传失败或超时，最终状态: $UPLOAD_STATUS"
     exit 1
-  fi
-  
-  local size=$(stat -c%s dist.zip)
-  if [ "$size" -eq 0 ]; then
-    echo_error "dist.zip 文件为空!"
+fi
+log_info "包上传成功！"
+
+# 3. 提交发布
+log_info "开始提交发布..."
+PUBLISH_RESPONSE=$(curl -s -D - \
+  -H "Authorization: ApiKey $API_KEY" \
+  -H "X-ClientID: $CLIENT_ID" \
+  -H "Content-Type: application/json" \
+  -X POST \
+  -d "{\"notes\":\"$PUBLISH_NOTES\"}" \
+  "$API_ENDPOINT/v1/products/$PRODUCT_ID/submissions")
+curl_check
+
+PUBLISH_LOCATION=$(echo "$PUBLISH_RESPONSE" | extract_operation_id)
+if [[ -z "$PUBLISH_LOCATION" ]]; then
+    log_error "发布提交失败，未获取到 operationID"
+    log_error "响应内容: $PUBLISH_RESPONSE"
     exit 1
-  fi
-  
-  echo_info "dist.zip 大小: $size 字节"
-  
-  local response=$(curl -s -w "%{http_code}" \
-    -H "Authorization: ApiKey $MPC_API_KEY" \
-    -H "X-ClientID: $MPC_CLIENT_ID" \
-    -H "Content-Type: application/zip" \
-    -X POST \
-    --data-binary "@dist.zip" \
-    "$MPC_API_BASE/products/$MPC_PRODUCT_ID/submissions/draft/package")
-  
-  # 提取响应体和状态码
-  local body=$(echo "$response" | head -c -4)
-  local status_code=$(echo "$response" | tail -c 4)
-  
-  echo "响应: $body"
-  echo "状态码: $status_code"
-  
-  if [ "$status_code" != "202" ]; then
-    echo_error "上传失败，状态码: $status_code"
+fi
+PUBLISH_OP_ID=$(basename "$PUBLISH_LOCATION")
+log_info "发布已提交，operationID: $PUBLISH_OP_ID"
+
+# 4. 检查发布状态
+PUBLISH_STATUS=$(check_status "$API_ENDPOINT/v1/products/$PRODUCT_ID/submissions/operations/$PUBLISH_OP_ID")
+if [[ "$PUBLISH_STATUS" != "Succeeded" ]]; then
+    log_error "发布失败或超时，最终状态: $PUBLISH_STATUS"
     exit 1
-  fi
-  
-  # 从响应头中提取Operation ID
-  UPLOAD_OPERATION_ID=$(echo "$body" | grep -i "location" | sed -E 's/.*\/operations\/([a-zA-Z0-9-]+).*/\1/')
-  echo_info "上传操作ID: $UPLOAD_OPERATION_ID"
-  echo_info "包上传成功"
-}
-
-# 检查上传状态
-check_upload_status() {
-  echo_info "检查上传状态，操作ID: $UPLOAD_OPERATION_ID"
-  
-  # 轮询检查状态，最多尝试10次，每次间隔10秒
-  for i in {1..10}; do
-    echo_info "尝试 $i/10"
-    
-    local response=$(curl -s -w "%{http_code}" \
-      -H "Authorization: ApiKey $MPC_API_KEY" \
-      -H "X-ClientID: $MPC_CLIENT_ID" \
-      -X GET \
-      "$MPC_API_BASE/products/$MPC_PRODUCT_ID/submissions/draft/package/operations/$UPLOAD_OPERATION_ID")
-    
-    # 提取响应体和状态码
-    local body=$(echo "$response" | head -c -4)
-    local status_code=$(echo "$response" | tail -c 4)
-    
-    echo "响应: $body"
-    echo "状态码: $status_code"
-    
-    if [ "$status_code" != "200" ]; then
-      echo_error "状态检查失败，状态码: $status_code"
-      exit 1
-    fi
-    
-    # 解析状态
-    local status=$(echo "$body" | grep -o '"status":[^,}]*' | sed 's/"status"://g' | sed 's/"//g')
-    echo_info "上传状态: $status"
-    
-    if [ "$status" == "Succeeded" ]; then
-      echo_info "包上传完成"
-      return 0
-    elif [ "$status" == "Failed" ]; then
-      echo_error "包上传失败"
-      exit 1
-    elif [ $i -eq 10 ]; then
-      echo_error "包上传超时"
-      exit 1
-    else
-      echo_warn "包上传进行中，等待10秒..."
-      sleep 10
-    fi
-  done
-}
-
-# 发布提交
-publish_submission() {
-  echo_info "开始发布提交..."
-  
-  local response=$(curl -s -w "%{http_code}" \
-    -H "Authorization: ApiKey $MPC_API_KEY" \
-    -H "X-ClientID: $MPC_CLIENT_ID" \
-    -H "Content-Type: application/json" \
-    -X POST \
-    -d '{"notes":"Updated via GitHub Actions"}' \
-    "$MPC_API_BASE/products/$MPC_PRODUCT_ID/submissions")
-  
-  # 提取响应体和状态码
-  local body=$(echo "$response" | head -c -4)
-  local status_code=$(echo "$response" | tail -c 4)
-  
-  echo "响应: $body"
-  echo "状态码: $status_code"
-  
-  if [ "$status_code" != "202" ]; then
-    echo_error "发布失败，状态码: $status_code"
-    exit 1
-  fi
-  
-  # 从响应头中提取Operation ID
-  PUBLISH_OPERATION_ID=$(echo "$body" | grep -i "location" | sed -E 's/.*\/operations\/([a-zA-Z0-9-]+).*/\1/')
-  echo_info "发布操作ID: $PUBLISH_OPERATION_ID"
-  echo_info "提交发布成功"
-}
-
-# 检查发布状态
-check_publish_status() {
-  echo_info "检查发布状态，操作ID: $PUBLISH_OPERATION_ID"
-  
-  # 轮询检查状态，最多尝试15次，每次间隔20秒
-  for i in {1..15}; do
-    echo_info "尝试 $i/15"
-    
-    local response=$(curl -s -w "%{http_code}" \
-      -H "Authorization: ApiKey $MPC_API_KEY" \
-      -H "X-ClientID: $MPC_CLIENT_ID" \
-      -X GET \
-      "$MPC_API_BASE/products/$MPC_PRODUCT_ID/submissions/operations/$PUBLISH_OPERATION_ID")
-    
-    # 提取响应体和状态码
-    local body=$(echo "$response" | head -c -4)
-    local status_code=$(echo "$response" | tail -c 4)
-    
-    echo "响应: $body"
-    echo "状态码: $status_code"
-    
-    if [ "$status_code" != "200" ]; then
-      echo_error "状态检查失败，状态码: $status_code"
-      exit 1
-    fi
-    
-    # 解析状态
-    local status=$(echo "$body" | grep -o '"status":[^,}]*' | sed 's/"status"://g' | sed 's/"//g')
-    echo_info "发布状态: $status"
-    
-    if [ "$status" == "Succeeded" ]; then
-      echo_info "扩展发布成功!"
-      return 0
-    elif [ "$status" == "Failed" ]; then
-      echo_error "扩展发布失败"
-      exit 1
-    elif [ $i -eq 15 ]; then
-      echo_error "扩展发布超时"
-      exit 1
-    else
-      echo_warn "扩展发布进行中，等待20秒..."
-      sleep 20
-    fi
-  done
-}
-
-# 主函数
-main() {
-  echo_info "开始部署到Microsoft Partner Center"
-  
-  # 检查环境变量
-  check_env_vars
-  
-  # 上传包
-  upload_package
-  
-  # 检查上传状态
-  check_upload_status
-  
-  # 发布提交
-  publish_submission
-  
-  # 检查发布状态
-  check_publish_status
-  
-  echo_info "部署完成!"
-}
-
-# 执行主函数
-main
+fi
+log_info "扩展已成功发布！"
