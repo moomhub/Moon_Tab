@@ -62,14 +62,21 @@ jobs:
           chmod +x .github/scripts/deploy-to-mpc.sh
           .github/scripts/deploy-to-mpc.sh
 
+      - name: Get version from package.json
+        id: get_version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "VERSION=$version" >> $GITHUB_ENV
+          echo "Version: $version"
+
       # 8. 发布到GitHub Releases
       - name: Release to GitHub Releases
         uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: v${{fromJson(readFile('package.json')).version}}
-          name: Release v${{fromJson(readFile('package.json')).version}}
+          tag_name: v${{ env.VERSION }}
+          name: Release v${{ env.VERSION }}
           draft: false
           prerelease: false
           files: |
