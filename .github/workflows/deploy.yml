@@ -14,7 +14,7 @@ env:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
 
     steps:
       # 1. 拉取代码
@@ -56,72 +56,22 @@ jobs:
           fi
           echo "✅ dist.zip size: $size bytes"
 
-      # 7. 校验环境变量
-      - name: Validate environment variables
+      # 7. 部署到Microsoft Partner Center
+      - name: Deploy to MPC
         run: |
-          missing=()
-          for var in MPC_CLIENT_ID MPC_API_KEY MPC_PRODUCT_ID; do
-            if [ -z "${!var}" ]; then missing+=($var); fi
-          done
-          if [ ${#missing[@]} -gt 0 ]; then
-            echo "❌ Missing env vars: ${missing[*]}"
-            exit 1
-          fi
-          echo "✅ All required env vars are set"
+          chmod +x .github/scripts/deploy-to-mpc.sh
+          .github/scripts/deploy-to-mpc.sh
 
-      # 8. 上传扩展包
-      - name: Upload package to MPC
-        run: |
-          chmod +x .github/scripts/retry_request.sh .github/scripts/check_status.sh
-          echo "📤 Uploading package..."
-          CMD="curl --fail-with-body -sS -D headers.txt -o upload.json \
-            -X POST \
-            -H 'Authorization: ApiKey $MPC_API_KEY' \
-            -H 'X-ClientID: $MPC_CLIENT_ID' \
-            -H 'Content-Type: application/zip' \
-            --data-binary @dist.zip \
-            $MPC_API_BASE/products/$MPC_PRODUCT_ID/submissions/draft/package"
-          .github/scripts/retry_request.sh "$CMD" 3 5
-          cat headers.txt
-          OPERATION_ID=$(grep -i location headers.txt | awk -F/ '{print $NF}' | tr -d '\r\n')
-          echo "Upload operation ID: $OPERATION_ID"
-
-          echo "⏳ Waiting for upload to complete..."
-          .github/scripts/check_status.sh "$OPERATION_ID" \
-            "$MPC_API_BASE/products/$MPC_PRODUCT_ID/submissions/draft/package/operations" \
-            "$MPC_API_KEY" "$MPC_CLIENT_ID"
-
-      # 9. 发布扩展
-      - name: Publish submission
-        run: |
-          echo "🚀 Publishing submission..."
-          CMD="curl --fail-with-body -sS -D headers.txt -o publish.json \
-            -X POST \
-            -H 'Authorization: ApiKey $MPC_API_KEY' \
-            -H 'X-ClientID: $MPC_CLIENT_ID' \
-            -H 'Content-Type: application/json' \
-            -d '{\"notes\": \"Automated release - $(date -u +'%Y-%m-%dT%H:%M:%SZ')\"}' \
-            $MPC_API_BASE/products/$MPC_PRODUCT_ID/submissions"
-          .github/scripts/retry_request.sh "$CMD" 3 5
-          cat headers.txt
-          PUBLISH_OPERATION_ID=$(grep -i location headers.txt | awk -F/ '{print $NF}' | tr -d '\r\n')
-          echo "Publish operation ID: $PUBLISH_OPERATION_ID"
-
-          echo "⏳ Waiting for publish to complete..."
-          .github/scripts/check_status.sh "$PUBLISH_OPERATION_ID" \
-            "$MPC_API_BASE/products/$MPC_PRODUCT_ID/submissions/operations" \
-            "$MPC_API_KEY" "$MPC_CLIENT_ID"
-
-          echo "✅ Extension published successfully!"
-
-      # 10. 上传日志和产物
-      - name: Archive artifacts
-        uses: actions/upload-artifact@v4
+      # 8. 发布到GitHub Releases
+      - name: Release to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: mpc-deploy-${{ github.sha }}
-          path: |
-            dist.zip
-            upload.json
-            publish.json
-            headers.txt
-          retention-days: 30
+          tag_name: v${{fromJson(readFile('package.json')).version}}
+          name: Release v${{fromJson(readFile('package.json')).version}}
+          draft: false
+          prerelease: false
+          files: |
+            ./dist.zip
+
