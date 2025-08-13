@@ -83,6 +83,18 @@ export default defineConfig({
           swiper: ['swiper'],
           aws: ['@aws-sdk/client-s3', '@aws-sdk/s3-request-presigner'],
         },
+        assetFileNames: (assetInfo) => {
+          // 对特定类型的静态资源文件使用固定名称（不加 hash）
+          const noHashExtensions = ['svg', 'webp', 'jpg', 'jpeg', 'png', 'gif', 'mp4', 'mov', 'avi', 'wmv'];
+          if (assetInfo.name) {
+            const ext = assetInfo.name.split('.').pop()?.toLowerCase();
+            if (ext && noHashExtensions.includes(ext)) {
+              return 'assets/[name].[ext]';
+            }
+          }
+          // 其他资源保持默认 hash
+          return 'assets/[name]-[hash][extname]';
+        },
       },
     },
     chunkSizeWarningLimit: 1000,
