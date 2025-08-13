@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Moon Tab",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "一个简洁的新标签页",
   "chrome_url_overrides": {
     "newtab": "index.html"
