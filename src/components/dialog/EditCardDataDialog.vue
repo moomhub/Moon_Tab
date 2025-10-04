@@ -81,21 +81,28 @@ function closeForm() {
  * @returns {any}
  */
 async function hanldeBookmarkIcon(data: BookmarkCardData) {
-  const uploadIcon = bookmarkFormRef.value?.uploadIcon;
+   const uploadIcon = bookmarkFormRef.value?.uploadIcon;
   const currentCheckIcon = bookmarkFormRef.value?.currentCheckIcon;
   const icon = data.icon;
-
-  if (currentCheckIcon?.key === icon?.key) {
-    // 表示选择的图标和原本的图标一样，不需要对图标进行处理
+  console.log(
+    `Hangle Bookmark Icon:\n
+     FormIcon ${data?.icon}\n
+     UploadIcon ${uploadIcon}\n 
+     CurrentCheckIcon ${currentCheckIcon}`
+  );
+  if (currentCheckIcon === icon) {
+    // 表示选中的图标没有任何改变
     return;
-  }  
-  if (uploadIcon && uploadIcon.key === currentCheckIcon?.key) {
-    // 表示存在有上传的图标,并且选择的图标为上传的图标 需要删除数据库中的图标，并且保存最新图标到数据库
-    await indexedDB.iconDB.setItem(uploadIcon.key as string, uploadIcon.blob);
-    await indexedDB.iconDB.removeItem(icon!.key as string);
   }
-  // 将最新的图标赋值给formData
-  data.icon = currentCheckIcon;
+  if (uploadIcon && uploadIcon.key === currentCheckIcon?.key) {
+    // 表示有上传的图标,并且选择的图标为上传的图标 需要删除数据库中的图标，并且保存最新图标到数据库
+    await indexedDB.iconDB.setItem(uploadIcon.key as string, uploadIcon.blob);
+    // 将最新的图标赋值给formData
+    data.icon = currentCheckIcon;
+  } else {
+    // 表示没有上传的图标,或者选择的图标不是上传的图标,直接赋值
+    data.icon = currentCheckIcon;
+  }
 }
 
 // 处理对话框确认事件

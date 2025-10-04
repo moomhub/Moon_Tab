@@ -87,12 +87,29 @@ export const getSystemIconData = async () => {
   return iconData;
 };
 
+/**
+ * 将S3连接配置数据进行编码处理
+ * @param data S3连接配置对象
+ * @returns 经过编码处理的字符串
+ */
 export const getS3CopyData = (data: S3ConnectionConfig) => {
+  // 将配置对象转换为JSON字符串并进行Base64编码
   const base64 = btoa(JSON.stringify(data));
+  // 将Base64编码后的字符串字符顺序反转
   return base64.split('').reverse().join('');
 };
 
+/**
+ * 解码并解析S3连接配置数据
+ * @param data 加密后的Base64编码字符串，经过反转处理
+ * @returns S3ConnectionConfig 解析后的S3连接配置对象
+ */
 export const getS3PasteData = (data: string): S3ConnectionConfig => {
+  // 将输入字符串反转，这是加密过程的一部分
   const reversed = data.split('').reverse().join('');
+  // 将反转后的字符串进行Base64解码，然后解析为JSON对象
   return JSON.parse(atob(reversed));
 };
+
+
+

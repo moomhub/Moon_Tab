@@ -36,30 +36,39 @@ export function getSwiperPageDoms() {
 // 略缩图滑动器
 const swipweThumbnailPages = ref<Array<ThumbnailPage>>([]);
 
+/**
+ * 生成轮播图缩略图页面的函数
+ * 该函数会遍历swiperStore中的数据，为每个页面生成缩略图
+ * 使用html2canvas将DOM元素转换为图片，并存储到swipweThumbnailPages中
+ */
 export async function buildSwipweThumbnailPages() {
   const swiperStore = useSwiperStore();
   // 清空现有数据，避免重复积累
   swipweThumbnailPages.value = [];
-  // 跟踪缺失的DOM元素
+  // 跟踪缺失的DOM元素，用于后续警告提示
   const missingDomPages: string[] = [];
   try {
     // 按照swiperStore.swiperData的顺序生成缩略图
     for (const page of swiperStore.swiperData) {
+      // 获取当前页面对应的DOM元素
       const dom = swiperPageDoms.value[page.id];
+      // 如果DOM元素不存在，记录ID并跳过
       if (!dom) {
         missingDomPages.push(page.id);
         continue;
       }
       try {
+        // 获取DOM元素的尺寸信息
         const rect = dom.getBoundingClientRect();
+        // 使用html2canvas将DOM元素转换为canvas
         const canvas = await html2canvas(dom, {
           width: rect.width,
           height: rect.height,
-          scale: 2, // 清晰度
+          scale: 2, // 清晰度设置为2倍
           backgroundColor: null, // 设置一个背景色
-          useCORS: true,
-          allowTaint: true,
-          logging: false,
+          useCORS: true, // 允许跨域图片
+          allowTaint: true, // 允许图片污染
+          logging: false, // 关闭日志输出
         });
         // 使用Map确保ID唯一性（防止重复添加）
         const pageExists = swipweThumbnailPages.value.some(

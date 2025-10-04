@@ -1,5 +1,9 @@
 <template>
   <div>
+    <ChooseBookmark
+      ref="chooseBookmarkRef"
+      @result="handleBookmarkChooseResult"
+    />
     <t-form-item label="名称" name="name">
       <t-input v-model="formData.name" placeholder="请输入书签名称" />
     </t-form-item>
@@ -83,7 +87,7 @@
         </t-link>
       </t-space>
     </t-form-item>
-    <t-form-item label="背景颜色">
+    <t-form-item label="背景颜色" help="透明图标这删除颜色即可">
       <t-color-picker
         v-model="formData.bgColor"
         format="CSS"
@@ -116,6 +120,8 @@ import { DEFAULT_BOOKMARK_FORM_DATA } from '@/constants/form';
 import { generateID, getSystemIconData } from '@/utils/system';
 import { IconData, IconStoreType, UploadIconData } from '@/types/icon';
 import IconChooseDialog from '@/components/dialog/IconChooseDialog.vue';
+import ChooseBookmark from '@/components/form/ChooseBookmark.vue';
+import { BookmarkInfo } from '@/utils/bookmark';
 
 // 定义组件 props
 const props = defineProps({
@@ -164,6 +170,17 @@ const icons = computed(() => {
   return array;
 });
 
+// 处理书签选择事件
+function handleBookmarkChooseResult(bookmark:BookmarkInfo) {
+  props.formData.name = bookmark.name;
+  props.formData.url = bookmark.url;
+  props.formData.icon = bookmark.icon;
+  props.formData.iconType = bookmark.iconType;
+  props.formData.bgColor = bookmark.bgColor;
+  currentCheckIcon.value = bookmark.icon;
+  localChooseIcon.value = bookmark.icon;
+}
+
 // 当前图标是否选中
 const isCheck = (icon: IconData) => {
   if (!currentCheckIcon.value) {
@@ -189,7 +206,7 @@ const handleBookmarkIconClick = async (icon: IconData) => {
     store: IconStoreType.DB,
     key: icon.key,
   };
-  console.log('bookmark form data current icon:', currentCheckIcon.value);
+  console.log('BookmarKCard Formdata current icon:', currentCheckIcon.value);
   return;
 };
 
