@@ -12,7 +12,8 @@
       </div>
     </div>
 
-    <div class="grid-stack" ref="gridstackRef">
+    <t-loading attach="#gridstack" size="small" :loading="loading"></t-loading>
+    <div id="gridstack" class="grid-stack" ref="gridstackRef">
       <div
         v-for="page in currentPages"
         class="grid-stack-item"
@@ -22,7 +23,11 @@
       >
         <div
           class="thumbnail"
-          :style="{ backgroundImage: `url(${currentWallpaper})` }"
+          :style="{
+            backgroundImage: isWallpaperLoaded
+              ? `url(${currentWallpaper})`
+              : 'none',
+          }"
         >
           <img :src="page.thumbnail" />
         </div>
@@ -39,6 +44,7 @@ import html2canvas from 'html2canvas';
 import { CloseIcon } from 'tdesign-icons-vue-next';
 import { MessagePlugin } from 'tdesign-vue-next';
 import { useSwiperStore, useWallpaperStore } from '@/store';
+import { useLoading } from '@/hooks';
 import { getSwipweThumbnailPages } from '@/utils/eventBus';
 import { GridStack, GridStackNode } from 'gridstack';
 import { generateID } from '@/utils/system';
@@ -55,6 +61,10 @@ const gridstackRef = ref<HTMLElement | null>(null);
 const currentPages = ref<Array<ThumbnailPage>>([]);
 // 当前壁纸
 const currentWallpaper = ref<string>('');
+// 壁纸图片是否加载完成
+const isWallpaperLoaded = ref<boolean>(false);
+
+const { loading, setLoading } = useLoading();
 
 // 重置当前页面为默认的原始页面
 function resetPage() {
@@ -247,12 +257,40 @@ const initGrid = () => {
 // 重新加载GridStack
 const loadGridStack = () => {
   grid.value!.load(currentPages.value);
+  setLoading(false);
+};
+
+// 预加载壁纸图片
+const preloadWallpaper = (url: string): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      isWallpaperLoaded.value = true;
+      resolve();
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
 };
 
 onMounted(async () => {
   // await buildSwiperThumbnailPage();
   currentPages.value = [...getSwipweThumbnailPages()];
   currentWallpaper.value = await wallpaperStore.getCurrentWallpaperImage();
+
+  // 预加载壁纸图片，确保在初始化GridStack之前壁纸已经加载完成
+  try {
+    if (currentWallpaper.value && currentWallpaper.value !== '#f1f3f5') {
+      await preloadWallpaper(currentWallpaper.value);
+    } else {
+      // 如果是默认背景色，直接标记为加载完成
+      isWallpaperLoaded.value = true;
+    }
+  } catch (error) {
+    console.error('壁纸预加载失败:', error);
+    isWallpaperLoaded.value = true; // 即使加载失败也继续显示
+  }
+
   nextTick(() => {
     initGrid();
     loadGridStack();
@@ -306,6 +344,8 @@ onMounted(async () => {
       background-repeat: no-repeat;
       transition: all 0.3s ease;
       cursor: move;
+      // 添加默认背景色，防止壁纸加载前显示纯透明背景
+      background-color: #f1f3f5;
 
       &:hover {
         transform: scale(1.1);

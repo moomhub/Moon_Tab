@@ -26,7 +26,7 @@ export const DEFAULT_BOOKMARK_FORM_DATA: BookmarkCardData = {
   desc: '',
   icons: [],
   iconType: BookmakeIconType.TEXT,
-  bgColor: '',
+  bgColor: 'rgba(255, 255, 255, 1)',
 };
 
 /**

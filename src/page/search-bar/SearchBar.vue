@@ -22,7 +22,7 @@
         size="large"
         class="search-input"
         v-model="searchQuery"
-        placeholder="请输入内容（有默认值）"
+        placeholder="输入搜索内容"
         @enter="handleSearch"
       />
       <div class="search-icon" @click="handleSearch">
