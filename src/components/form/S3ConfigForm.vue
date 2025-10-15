@@ -69,7 +69,7 @@ import { getS3CopyData, getS3PasteData } from '@/utils/system';
 // pinia
 const systemStore = useSystemStore();
 // hook
-const { loading, setLoading } = useLoading();
+const { loading, setLoading } = useLoading(false);
 // vue ref
 const formRef = ref<FormInstanceFunctions>(); // 引用表单实例
 
